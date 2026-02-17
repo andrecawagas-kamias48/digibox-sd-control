@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SD Card Control</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #121212;
+    color: #EAEAEA;
+}
+
+.container {
+    max-width: 600px;
+    margin: auto;
+    padding: 16px;
+}
+
+.accent-bar {
+    height: 5px;
+    background: linear-gradient(to right,
+        red, orange, yellow, green, blue, purple);
+    margin-bottom: 16px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.section {
+    margin-bottom: 24px;
+}
+
+input {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background-color: #1F1F1F;
+    color: #EAEAEA;
+    font-size: 16px;
+}
+
+button {
+    background-color: #1F1F1F;
+    color: #EAEAEA;
+    border: 1px solid #333;
+    padding: 14px;
+    margin: 4px;
+    border-radius: 10px;
+    font-size: 16px;
+    cursor: pointer;
+    flex: 1;
+}
+
+button:hover {
+    background-color: #2A2A2A;
+}
+
+button.selected {
+    border: 2px solid #00BFFF;
+}
+
+button.disabled {
+    background-color: #333;
+    color: #777;
+    cursor: not-allowed;
+}
+
+.flex-row {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.sd-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.log-container {
+    background-color: #1F1F1F;
+    padding: 12px;
+    border-radius: 10px;
+    min-height: 80px;
+}
+
+.log-entry {
+    padding: 10px;
+    border-bottom: 1px solid #333;
+    border-left: 6px solid #8B0000;
+    border-right: 6px solid #8B0000;
+    background-color: rgba(139, 0, 0, 0.15);
+}
+
+.log-entry.returned {
+    border-left: 6px solid #1E8F3D;
+    border-right: 6px solid #1E8F3D;
+    background-color: rgba(30, 143, 61, 0.15);
+    opacity: 0.8;
+}
+
+
+
+.summary {
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+}
+.reset-btn {
+    background: #2A1A1A;
+    color: #aaa;
+    border: 1px solid #333;
+    font-size: 14px;
+}
+
+.hidden {
+    display: none;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="accent-bar"></div>
+    <h1>SD CARD CONTROL</h1>
+
+    <!-- SETUP SCREEN -->
+    <div id="setupScreen">
+
+        <div class="section">
+            <h2>Setup Cameramen (up to 6)</h2>
+            <input type="text" placeholder="Cameraman 1">
+            <input type="text" placeholder="Cameraman 2">
+            <input type="text" placeholder="Cameraman 3">
+            <input type="text" placeholder="Cameraman 4">
+            <input type="text" placeholder="Cameraman 5">
+            <input type="text" placeholder="Cameraman 6">
+        </div>
+
+        <div class="section">
+            <h2>Setup Cameras (up to 6)</h2>
+            <input type="text" placeholder="Camera 1">
+            <input type="text" placeholder="Camera 2">
+            <input type="text" placeholder="Camera 3">
+            <input type="text" placeholder="Camera 4">
+            <input type="text" placeholder="Camera 5">
+            <input type="text" placeholder="Camera 6">
+        </div>
+
+        <button id="startEventBtn">START EVENT</button>
+
+    </div>
+
+    <!-- MAIN APP SCREEN -->
+    <div id="mainScreen" class="hidden">
+
+        <!-- CAMERAMAN -->
+        <div class="section">
+            <h2>Select Cameraman</h2>
+            <div class="flex-row" id="cameramanButtons"></div>
+        </div>
+
+        <!-- CAMERA -->
+        <div class="section">
+            <h2>Select Camera</h2>
+            <div class="flex-row" id="cameraButtons"></div>
+        </div>
+
+        <!-- SD GRID -->
+        <div class="section">
+            <h2>Select SD Card</h2>
+            <div class="sd-grid" id="sdGrid"></div>
+        </div>
+
+        <!-- LOG -->
+        <div class="section">
+            <h2>Live Log</h2>
+            <div class="log-container" id="logContainer"></div>
+        </div>
+
+        <!-- SUMMARY -->
+        <div class="section">
+            <div class="summary">
+                Outstanding: <span id="outstandingCount">0</span>
+            </div>
+        </div>
+        <div class="section" style="text-align:center;">
+ <button id="resetEventBtn" class="reset-btn">
+
+        Reset Event
+    </button>
+</div>
+<div class="section" style="text-align:center; font-size:12px; opacity:0.6;">
+    Powered by Digibox Audiovisual Productions
+</div>
+
+
+</div>
+
+<script>
+
+let cameramen = [];
+let cameras = [];
+let selectedCameraman = null;
+let selectedCamera = null;
+let log = [];
+
+/* ===== LOAD SAVED STATE ON PAGE LOAD ===== */
+
+window.addEventListener("load", () => {
+    const saved = localStorage.getItem("sdControlData");
+
+    if (saved) {
+        const data = JSON.parse(saved);
+
+        cameramen = data.cameramen;
+        cameras = data.cameras;
+        log = data.log;
+
+        generateButtons();
+
+        document.getElementById("setupScreen").classList.add("hidden");
+        document.getElementById("mainScreen").classList.remove("hidden");
+
+        renderLog();
+        updateOutstanding();
+    }
+});
+
+/* ===== SAVE STATE ===== */
+
+function saveState() {
+    const data = {
+        cameramen,
+        cameras,
+        log
+    };
+
+    localStorage.setItem("sdControlData", JSON.stringify(data));
+}
+
+/* ===== START EVENT ===== */
+
+document.getElementById("startEventBtn").addEventListener("click", () => {
+
+    const inputs = document.querySelectorAll("#setupScreen input");
+
+    cameramen = [];
+    cameras = [];
+    log = [];
+
+    inputs.forEach((input, index) => {
+        if (input.value.trim() !== "") {
+            if (index < 6) {
+                cameramen.push(input.value.trim());
+            } else {
+                cameras.push(input.value.trim());
+            }
+        }
+    });
+
+    if (cameramen.length === 0 || cameras.length === 0) {
+        alert("Please enter at least one cameraman and one camera.");
+        return;
+    }
+
+    generateButtons();
+
+    document.getElementById("setupScreen").classList.add("hidden");
+    document.getElementById("mainScreen").classList.remove("hidden");
+
+    saveState();
+});
+
+/* ===== GENERATE BUTTONS ===== */
+
+function generateButtons() {
+
+    const camContainer = document.getElementById("cameramanButtons");
+    const cameraContainer = document.getElementById("cameraButtons");
+    const sdGrid = document.getElementById("sdGrid");
+
+    camContainer.innerHTML = "";
+    cameraContainer.innerHTML = "";
+    sdGrid.innerHTML = "";
+
+    /* Cameraman Buttons */
+    cameramen.forEach(name => {
+        const btn = document.createElement("button");
+        btn.innerText = name;
+        if (name === selectedCameraman) {
+    btn.classList.add("selected");
+}
+
+
+        btn.addEventListener("click", () => {
+            document.querySelectorAll("#cameramanButtons button")
+                .forEach(b => b.classList.remove("selected"));
+
+            btn.classList.add("selected");
+            selectedCameraman = name;
+
+            selectedCamera = null;
+            document.querySelectorAll("#cameraButtons button")
+                .forEach(b => b.classList.remove("selected"));
+        });
+
+        camContainer.appendChild(btn);
+    });
+
+    /* Camera Buttons */
+    cameras.forEach(name => {
+        const btn = document.createElement("button");
+        btn.innerText = name;
+        if (name === selectedCamera) {
+    btn.classList.add("selected");
+}
+
+
+        btn.addEventListener("click", () => {
+            document.querySelectorAll("#cameraButtons button")
+                .forEach(b => b.classList.remove("selected"));
+
+            btn.classList.add("selected");
+            selectedCamera = name;
+        });
+
+        cameraContainer.appendChild(btn);
+    });
+
+    /* SD Grid */
+    for (let i = 1; i <= 12; i++) {
+        const cardId = "SD" + String(i).padStart(2, "0");
+        const btn = document.createElement("button");
+        btn.innerText = cardId;
+
+        // Disable if already issued
+        if (log.find(entry => entry.card === cardId)) {
+            btn.classList.add("disabled");
+        }
+
+        btn.addEventListener("click", () => {
+
+            if (!selectedCameraman || !selectedCamera) {
+                alert("Select cameraman and camera first.");
+                return;
+            }
+
+            if (btn.classList.contains("disabled")) return;
+
+            issueCard(cardId);
+        });
+
+        sdGrid.appendChild(btn);
+    }
+}
+
+/* ===== ISSUE CARD ===== */
+
+function issueCard(cardId) {
+
+    const cameramanEntries = log.filter(entry => entry.cameraman === selectedCameraman);
+    const order = cameramanEntries.length + 1;
+
+    const entry = {
+        cameraman: selectedCameraman,
+        camera: selectedCamera,
+        card: cardId,
+        order: order,
+        returned: false
+    };
+
+    log.push(entry);
+
+    saveState();
+    generateButtons();
+    renderLog();
+    updateOutstanding();
+}
+
+/* ===== RENDER LOG ===== */
+
+function renderLog() {
+
+    const container = document.getElementById("logContainer");
+    container.innerHTML = "";
+
+    log.forEach((entry) => {
+
+        const div = document.createElement("div");
+        div.classList.add("log-entry");
+
+        if (entry.returned) {
+            div.classList.add("returned");
+        }
+
+        const text = document.createElement("span");
+        text.innerText = `${entry.cameraman} | ${entry.camera} | ${entry.card} | #${entry.order}`;
+
+        const btn = document.createElement("button");
+        btn.innerText = entry.returned ? "UNDO" : "RETURN";
+        btn.style.marginLeft = "10px";
+        btn.style.padding = "6px 10px";
+        btn.style.fontSize = "12px";
+
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            entry.returned = !entry.returned;
+            saveState();
+            renderLog();
+            updateOutstanding();
+        });
+
+        div.appendChild(text);
+        div.appendChild(btn);
+
+        container.appendChild(div);
+    });
+}
+
+/* ===== UPDATE OUTSTANDING ===== */
+
+function updateOutstanding() {
+    const count = log.filter(entry => !entry.returned).length;
+    document.getElementById("outstandingCount").innerText = count;
+}
+/* ===== RESET EVENT ===== */
+
+document.getElementById("resetEventBtn").addEventListener("click", () => {
+
+    if (!confirm("Reset entire event? This will erase all data.")) return;
+
+    localStorage.removeItem("sdControlData");
+
+    cameramen = [];
+    cameras = [];
+    log = [];
+    selectedCameraman = null;
+    selectedCamera = null;
+
+    // Clear UI manually
+    document.getElementById("cameramanButtons").innerHTML = "";
+    document.getElementById("cameraButtons").innerHTML = "";
+    document.getElementById("sdGrid").innerHTML = "";
+    document.getElementById("logContainer").innerHTML = "";
+    document.getElementById("outstandingCount").innerText = "0";
+
+    document.getElementById("mainScreen").classList.add("hidden");
+    document.getElementById("setupScreen").classList.remove("hidden");
+
+});
+
+
+</script>
+
+
+
+
+</body>
+</html>
